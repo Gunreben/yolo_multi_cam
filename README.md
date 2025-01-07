@@ -1,4 +1,4 @@
-# ros2_multicam_yolo
+# yolo_multi_cam 
 
 Real-time multi-camera object detection using YOLOv8 for ROS2 systems.
 
