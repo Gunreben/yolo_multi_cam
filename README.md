@@ -35,7 +35,7 @@ cd ~/ros2_ws/src
 
 2. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/ros2_multicam_yolo.git
+git clone https://github.com/Gunreben/yolo_multi_cam.git
 ```
 
 3. Install dependencies:
@@ -46,7 +46,7 @@ rosdep install --from-paths src --ignore-src -r -y
 
 4. Build the package:
 ```bash
-colcon build --packages-select ros2_multicam_yolo
+colcon build --packages-select yolo_multi_cam
 ```
 
 5. Source the workspace:
@@ -58,7 +58,7 @@ source ~/ros2_ws/install/setup.bash
 
 ### Basic Launch
 ```bash
-ros2 launch ros2_multicam_yolo multicam_detector.launch.py
+ros2 run yolo_multi_cam multi_cam_yolo
 ```
 
 ### Parameters
@@ -88,7 +88,7 @@ For each camera topic `/camera_image/Cam_X`, the node publishes:
 You can specify custom camera topics using ROS2 parameters:
 
 ```bash
-ros2 run ros2_multicam_yolo multi_cam_yolo_node --ros-args -p camera_topics:="['/cam1/image_raw','/cam2/image_raw']"
+ros2 run yolo_multi_cam multi_cam_yolo --ros-args -p camera_topics:="['/cam1/image_raw','/cam2/image_raw']"
 ```
 
 ### Custom YOLO Model
@@ -96,7 +96,7 @@ ros2 run ros2_multicam_yolo multi_cam_yolo_node --ros-args -p camera_topics:="['
 To use a custom YOLO model:
 
 ```bash
-ros2 run ros2_multicam_yolo multi_cam_yolo_node --ros-args -p model_path:="/path/to/your/model.pt"
+ros2 run yolo_multi_cam multi_cam_yolo --ros-args -p model_path:="/path/to/your/model.pt"
 ```
 
 ## Contributing
@@ -112,11 +112,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you use this software in your research, please cite:
 
 ```bibtex
-@software{ros2_multicam_yolo,
-  author = {Your Name},
+@software{multi_cam_yolo,
+  author = {Lorenz Gunreben},
   title = {ROS2 Multi-Camera YOLO Detection},
   year = {2024},
   publisher = {GitHub},
-  url = {https://github.com/yourusername/ros2_multicam_yolo}
+  url = {https://github.com/Gunreben/multi_cam_yolo}
 }
 ```
