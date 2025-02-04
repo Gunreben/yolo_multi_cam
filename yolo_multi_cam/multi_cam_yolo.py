@@ -29,6 +29,7 @@ class MultiCamYoloNode(Node):
             '/camera_image/Cam_BR',
             '/camera_image/Cam_BL',
             '/camera_image/Cam_ML',
+            '/camera_image/Cam_MR',
             '/camera_image/Cam_FR',
             '/camera_image/Cam_FL'
         ])
