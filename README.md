@@ -43,6 +43,11 @@ git clone https://github.com/Gunreben/yolo_multi_cam.git
 cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
 ```
+Be sure that compativle cuda, torch and torchvision are installed. For Jetson devices you can finde compatible versions here:
+https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+
+and the cuda versions here: 
+https://developer.nvidia.com/cuda-12-4-0-download-archive?target_os=Linux&target_arch=aarch64-jetson&Compilation=Native&Distribution=Ubuntu&target_version=22.04&target_type=deb_network
 
 4. Build the package:
 ```bash
