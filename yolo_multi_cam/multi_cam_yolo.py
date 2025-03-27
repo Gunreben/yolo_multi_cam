@@ -30,7 +30,7 @@ class MultiCamYoloNode(Node):
         self.declare_parameter('camera_topics', [
             '/camera/side_left/compressed',
             '/camera/rear_left/compressed',
-            '/camera/read_mid/compressed',
+            '/camera/rear_mid/compressed',
             '/camera/rear_right/compressed',
             '/camera/side_right/compressed'
         ])
