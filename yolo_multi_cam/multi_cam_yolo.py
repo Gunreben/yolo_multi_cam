@@ -1,153 +1,236 @@
 #!/usr/bin/env python3
 
-import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
-
-from sensor_msgs.msg import Image, CompressedImage
-from cv_bridge import CvBridge
+import functools
 
 import cv2
 import numpy as np
-import functools
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import CompressedImage, Image
+from vision_msgs.msg import (
+    Detection2D,
+    Detection2DArray,
+    ObjectHypothesisWithPose,
+)
 
 try:
     from ultralytics import YOLO
 except ImportError:
-    YOLO = None  # handle gracefully if not installed
+    YOLO = None
 
-from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
+
+def _cv2_to_imgmsg(frame: np.ndarray, header) -> Image:
+    """Manual cv2 -> sensor_msgs/Image without cv_bridge (avoids numpy 2.x crash)."""
+    msg = Image()
+    msg.header = header
+    msg.height, msg.width = frame.shape[:2]
+    if frame.ndim == 3:
+        msg.encoding = "bgr8"
+        msg.step = msg.width * 3
+    else:
+        msg.encoding = "mono8"
+        msg.step = msg.width
+    msg.is_bigendian = False
+    msg.data = frame.tobytes()
+    return msg
+
+
+def _cv2_to_compressed_imgmsg(
+    frame: np.ndarray, header, jpeg_quality: int = 80
+) -> CompressedImage:
+    msg = CompressedImage()
+    msg.header = header
+    msg.format = "jpeg"
+    _, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
+    msg.data = buf.tobytes()
+    return msg
+
 
 class MultiCamYoloNode(Node):
     def __init__(self):
-        super().__init__('multi_cam_yolo_node')
+        super().__init__("multi_cam_yolo_node")
 
-        # QoS profile for sensor data (BEST_EFFORT for compatibility with some camera drivers)
-        qos_profile = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, depth=10)
-
-        # Declare parameters
-        self.declare_parameter('model_path', 'yolov8n.pt')
-        self.declare_parameter('camera_topics', [
-            '/camera/side_left/compressed',
-            '/camera/rear_left/compressed',
-            '/camera/rear_mid/compressed',
-            '/camera/rear_right/compressed',
-            '/camera/side_right/compressed'
+        self.declare_parameter("model_path", "yolo11n.pt")
+        self.declare_parameter("camera_topics", [
+            "/zed/zed_node/right_raw/image_raw_color/compressed",
         ])
-        self.declare_parameter('confidence_threshold', 0.5)
-        self.declare_parameter('device', 'cuda')
-        self.declare_parameter('publish_annotated_image', True)
-        self.declare_parameter('publish_bboxes', True)
-        self.declare_parameter('processed_imgsz', 1280)
+        self.declare_parameter("confidence_threshold", 0.5)
+        self.declare_parameter("device", "cuda:0")
+        self.declare_parameter("publish_annotated_image", True)
+        self.declare_parameter("publish_bboxes", True)
+        self.declare_parameter("processed_imgsz", 640)
+        self.declare_parameter("filter_classes", [0])
+        self.declare_parameter("iou_threshold", 0.5)
+        self.declare_parameter("jpeg_quality", 80)
 
-        # Get parameter values
-        self.model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        self.camera_topics = self.get_parameter('camera_topics').get_parameter_value().string_array_value
-        self.confidence_threshold = self.get_parameter('confidence_threshold').get_parameter_value().double_value
-        self.device = self.get_parameter('device').get_parameter_value().string_value
-        self.publish_annotated_image = self.get_parameter('publish_annotated_image').get_parameter_value().bool_value
-        self.publish_bboxes = self.get_parameter('publish_bboxes').get_parameter_value().bool_value
-        self.processed_imgsz = self.get_parameter('processed_imgsz').get_parameter_value().integer_value
+        self.model_path = self.get_parameter("model_path").value
+        self.camera_topics = self.get_parameter("camera_topics").value
+        self.confidence_threshold = self.get_parameter("confidence_threshold").value
+        self.device = self.get_parameter("device").value
+        self.publish_annotated_image = self.get_parameter("publish_annotated_image").value
+        self.publish_bboxes = self.get_parameter("publish_bboxes").value
+        self.processed_imgsz = self.get_parameter("processed_imgsz").value
+        self.filter_classes = list(self.get_parameter("filter_classes").value)
+        self.iou_threshold = self.get_parameter("iou_threshold").value
+        self.jpeg_quality = self.get_parameter("jpeg_quality").value
 
-        self.bridge = CvBridge()
+        self.class_names: dict[int, str] = {}
+        self.model = None
 
-        # Load YOLO model
         if YOLO is not None:
-            self.get_logger().info(f"Loading YOLO model from {self.model_path} on {self.device}...")
+            self.get_logger().info(
+                f"Loading YOLO model from {self.model_path} on {self.device}..."
+            )
             self.model = YOLO(self.model_path)
-        else:
-            self.get_logger().warn(" The 'ultralytics' library is not installed. Please run:\n"
-                "  pip install ultralytics\n")
-            self.model = None
+            self.class_names = self.model.names or {}
 
-        # Create subscriptions for multiple cameras
+            self.get_logger().info("Running CUDA warmup inference...")
+            dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+            self.model.predict(
+                dummy, device=self.device, imgsz=self.processed_imgsz, verbose=False
+            )
+            self.get_logger().info(
+                f"Model ready. Filtering to: "
+                f"{[self.class_names.get(c, str(c)) for c in self.filter_classes]}"
+            )
+        else:
+            self.get_logger().error(
+                "ultralytics not installed. Run: pip install ultralytics"
+            )
+
         self.subscribers = []
-        self.annotated_image_publishers = {}
-        self.bbox_publishers = {}
+        self.annotated_pubs: dict[str, object] = {}
+        self.bbox_pubs: dict[str, object] = {}
+        self._topic_compressed: dict[str, bool] = {}
+        self._processing = False
+
+        qos_sub = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, depth=1)
 
         for topic in self.camera_topics:
             is_compressed = topic.endswith("/compressed")
             msg_type = CompressedImage if is_compressed else Image
+            self._topic_compressed[topic] = is_compressed
 
             sub = self.create_subscription(
                 msg_type,
                 topic,
-                functools.partial(self.image_callback, topic=topic, compressed=is_compressed),
-                qos_profile  # Apply BEST_EFFORT QoS
+                functools.partial(
+                    self._image_cb, topic=topic, compressed=is_compressed
+                ),
+                qos_sub,
             )
             self.subscribers.append(sub)
 
             if self.publish_annotated_image:
-                annotated_topic = f"{topic}_annotated"
-                self.annotated_image_publishers[topic] = self.create_publisher(Image, annotated_topic, 10)
-                self.get_logger().info(f"Will publish annotated images on: {annotated_topic}")
-
+                ann_type = CompressedImage if is_compressed else Image
+                self.annotated_pubs[topic] = self.create_publisher(
+                    ann_type, f"{topic}_annotated", 10
+                )
             if self.publish_bboxes:
-                bboxes_topic = f"{topic}_bboxes"
-                self.bbox_publishers[topic] = self.create_publisher(Detection2DArray, bboxes_topic, 10)
-                self.get_logger().info(f"Will publish bounding boxes on: {bboxes_topic}")
+                self.bbox_pubs[topic] = self.create_publisher(
+                    Detection2DArray, f"{topic}_bboxes", 10
+                )
 
-    def image_callback(self, msg, topic=None, compressed=False):
-        if self.model is None:
+            self.get_logger().info(f"Subscribed to: {topic}")
+
+    def _image_cb(self, msg, *, topic: str, compressed: bool):
+        if self.model is None or self._processing:
             return
 
+        self._processing = True
+        try:
+            self._run_inference(msg, topic, compressed)
+        except Exception as e:
+            self.get_logger().warn(
+                f"Inference failed on {topic}: {e}", throttle_duration_sec=2.0
+            )
+        finally:
+            self._processing = False
+
+    def _run_inference(self, msg, topic: str, compressed: bool):
         if compressed:
             np_arr = np.frombuffer(msg.data, np.uint8)
             frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         else:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            h, w = msg.height, msg.width
+            channels = len(msg.data) // (h * w) if h > 0 and w > 0 else 3
+            frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((h, w, channels))
+            if msg.encoding == "rgb8":
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-        results = self.model.predict(frame, conf=self.confidence_threshold, device=self.device, imgsz=self.processed_imgsz)
+        if frame is None:
+            return
 
-        if len(results) > 0:
-            dets = results[0].boxes
+        results = self.model.predict(
+            frame,
+            conf=self.confidence_threshold,
+            iou=self.iou_threshold,
+            device=self.device,
+            imgsz=self.processed_imgsz,
+            classes=self.filter_classes if self.filter_classes else None,
+            verbose=False,
+        )
 
-            if self.publish_bboxes:
-                detection_array_msg = Detection2DArray()
-                detection_array_msg.header = msg.header
+        if not results:
+            return
 
-            annotated_frame = frame.copy() if self.publish_annotated_image else None
+        boxes = results[0].boxes
+        if boxes is None or len(boxes) == 0:
+            return
 
-            for box in dets:
-                cls = int(box.cls[0])
-                conf = float(box.conf[0])
-                x1, y1, x2, y2 = box.xyxy[0]
+        det_array = Detection2DArray()
+        det_array.header = msg.header
 
-                if cls in [0, 2]:
-                    self.get_logger().info(
-                        f"Detected class {cls} with conf {conf:.2f} at [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}]"
-                    )
+        annotated = frame.copy() if self.publish_annotated_image else None
 
-                if self.publish_bboxes:
-                    detection_msg = Detection2D()
-                    detection_msg.header = msg.header
-                    detection_msg.bbox.center.position.x = float(x1 + (x2 - x1) / 2.0)
-                    detection_msg.bbox.center.position.y = float(y1 + (y2 - y1) / 2.0)
-                    detection_msg.bbox.size_x = float(x2 - x1)
-                    detection_msg.bbox.size_y = float(y2 - y1)
-
-                    hypothesis = ObjectHypothesisWithPose()
-                    hypothesis.hypothesis.class_id = str(cls)
-                    hypothesis.hypothesis.score = float(conf)
-                    detection_msg.results.append(hypothesis)
-                    detection_array_msg.detections.append(detection_msg)
-
-                if self.publish_annotated_image and annotated_frame is not None:
-                    cv2.rectangle(annotated_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    label_text = f"{cls} {conf:.2f}"
-                    cv2.putText(annotated_frame, label_text, (int(x1), int(y1) - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        for box in boxes:
+            cls_id = int(box.cls[0])
+            conf = float(box.conf[0])
+            x1, y1, x2, y2 = [float(v) for v in box.xyxy[0]]
+            cls_name = self.class_names.get(cls_id, str(cls_id))
 
             if self.publish_bboxes:
-                self.bbox_publishers[topic].publish(detection_array_msg)
+                det = Detection2D()
+                det.header = msg.header
+                det.bbox.center.position.x = (x1 + x2) / 2.0
+                det.bbox.center.position.y = (y1 + y2) / 2.0
+                det.bbox.size_x = x2 - x1
+                det.bbox.size_y = y2 - y1
 
-            if self.publish_annotated_image and annotated_frame is not None:
-                annotated_msg = self.bridge.cv2_to_imgmsg(annotated_frame, encoding='bgr8')
-                annotated_msg.header = msg.header
-                self.annotated_image_publishers[topic].publish(annotated_msg)
+                hyp = ObjectHypothesisWithPose()
+                hyp.hypothesis.class_id = cls_name
+                hyp.hypothesis.score = conf
+                det.results.append(hyp)
+                det_array.detections.append(det)
 
-        else:
-            self.get_logger().info("No detections in this frame.")
+            if annotated is not None:
+                color = (0, 255, 0) if cls_name == "person" else (255, 180, 0)
+                cv2.rectangle(
+                    annotated, (int(x1), int(y1)), (int(x2), int(y2)), color, 2
+                )
+                label = f"{cls_name} {conf:.2f}"
+                cv2.putText(
+                    annotated,
+                    label,
+                    (int(x1), int(y1) - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    color,
+                    1,
+                )
+
+        if self.publish_bboxes and det_array.detections:
+            self.bbox_pubs[topic].publish(det_array)
+
+        if annotated is not None and topic in self.annotated_pubs:
+            if self._topic_compressed[topic]:
+                out = _cv2_to_compressed_imgmsg(
+                    annotated, msg.header, self.jpeg_quality
+                )
+            else:
+                out = _cv2_to_imgmsg(annotated, msg.header)
+            self.annotated_pubs[topic].publish(out)
 
 
 def main(args=None):
@@ -160,5 +243,6 @@ def main(args=None):
     node.destroy_node()
     rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

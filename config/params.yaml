@@ -1,0 +1,28 @@
+multi_cam_yolo_node:
+  ros__parameters:
+    model_path: "yolo11n.pt"
+
+    # Front camera only for now. Add surround cameras back for step 2.
+    camera_topics:
+      - "/zed/zed_node/right_raw/image_raw_color/compressed"
+      - "/camera/side_left/image_raw/compressed"
+      - "/camera/rear_left/image_raw/compressed"
+      - "/camera/rear_mid/image_raw/compressed"
+      - "/camera/rear_right/image_raw/compressed"
+      - "/camera/side_right/image_raw/compressed"
+
+    confidence_threshold: 0.45
+    iou_threshold: 0.5
+    device: "cuda:0"
+
+    # COCO class IDs to keep. 0 = person. Empty list = all classes.
+    filter_classes: [0]
+
+    # YOLO inference resolution. 640 is the sweet spot for speed/accuracy.
+    # The model resizes internally -- this does NOT need to match camera resolution.
+    processed_imgsz: 640
+    publish_annotated_image: true
+    publish_bboxes: true
+
+    # JPEG quality for compressed annotated output (1-100). Lower = smaller/faster.
+    jpeg_quality: 80
