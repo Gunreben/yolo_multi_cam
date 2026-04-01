@@ -4,12 +4,12 @@ multi_cam_yolo_node:
 
     # Front camera only for now. Add surround cameras back for step 2.
     camera_topics:
-      - "/zed/zed_node/right_raw/image_raw_color/compressed"
-      - "/camera/side_left/image_raw/compressed"
-      - "/camera/rear_left/image_raw/compressed"
-      - "/camera/rear_mid/image_raw/compressed"
-      - "/camera/rear_right/image_raw/compressed"
-      - "/camera/side_right/image_raw/compressed"
+      - "/zed/zed_node/left_raw/image_raw_color/compressed"
+      #- "/camera/side_left/image_raw/compressed"
+      #- "/camera/rear_left/image_raw/compressed"
+      #- "/camera/rear_mid/image_raw/compressed"
+      #- "/camera/rear_right/image_raw/compressed"
+      #- "/camera/side_right/image_raw/compressed"
 
     confidence_threshold: 0.45
     iou_threshold: 0.5
