@@ -1,120 +1,97 @@
-# yolo_multi_cam 
+# yolo_multi_cam
 
-Real-time multi-camera object detection using YOLOv8 for ROS2 systems.
+Real-time multi-camera person detection using YOLO (ultralytics) for ROS 2.
 
-## Overview
+Runs one YOLO model over the tractor's compressed camera streams
+(5× ArkCam surround + ZED 2i front), rate-limited per camera, and
+publishes `vision_msgs/Detection2DArray` per camera. Built as the camera
+branch of the obstacle/people-detection demonstrator (see the
+`obstacle_detection` package for lidar clustering and fusion).
 
-This ROS2 package provides a robust solution for performing real-time object detection across multiple camera feeds using YOLOv8. It's designed to handle synchronized processing of multiple video streams while maintaining high performance through GPU acceleration.
+## Topics
 
-Key features:
-- Support for multiple synchronized camera inputs
-- Real-time object detection using YOLOv8
-- Configurable detection confidence thresholds
-- Optional visualization with annotated images
-- Standardized detection output using vision_msgs
-- GPU acceleration support
-- Flexible camera topic configuration
+| Direction | Topic | Type | Notes |
+|-----------|-------|------|-------|
+| in | `/camera/<pos>/image_raw/compressed` | CompressedImage | ArkCams (v1 and v2 stacks) |
+| in | `/zed/zed_node/left/color/raw/image/compressed` | CompressedImage | ZED, v2 stack |
+| in | `/zed/zed_node/left_raw/image_raw_color/compressed` | CompressedImage | ZED, v1 bags |
+| out | `/yolo/<camera_name>/detections` | Detection2DArray | **always published per processed frame, incl. empty** |
+| out | `/yolo/<camera_name>/annotated/compressed` | CompressedImage | only if `publish_annotated_image` |
 
-## Prerequisites
+Output topic names are **stable** (keyed by camera name, not input
+topic), so downstream consumers are independent of which recording-stack
+version supplies the images. The `Detection2DArray` header carries the
+image timestamp and the camera's optical frame — fusion uses that frame
+for TF lookups.
 
-- ROS2 (Humble or newer recommended)
-- Python 3.8+
-- CUDA-capable GPU (recommended)
-- Required Python packages:
-  ```bash
-  pip install ultralytics opencv-python-headless
-  ```
+Empty detection arrays are intentional: downstream fusion expires stale
+detections through them. Do not filter them out.
 
-## Installation
+## v1/v2 topic profiles
 
-1. Create a ROS2 workspace (if you haven't already):
-```bash
-mkdir -p ~/ros2_ws/src
-cd ~/ros2_ws/src
-```
+The ZED topics were renamed between recording-stack v1 (wrapper 4.x)
+and v2 (wrapper 5.x). Cameras may configure `topic_v1` / `topic_v2`
+instead of a single `topic`:
 
-2. Clone this repository:
-```bash
-git clone https://github.com/Gunreben/yolo_multi_cam.git
-```
+- `topic_profile: v1` / `v2` — subscribe to that variant only
+- `topic_profile: auto` (default) — subscribe to both, lock onto
+  whichever delivers first, drop the other subscription
 
-3. Install dependencies:
-```bash
-cd ~/ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
-```
-Be sure that compativle cuda, torch and torchvision are installed. For Jetson devices you can finde compatible versions here:
-https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+ArkCam topics are identical in both stacks and use plain `topic`.
 
-and the cuda versions here: 
-https://developer.nvidia.com/cuda-12-4-0-download-archive?target_os=Linux&target_arch=aarch64-jetson&Compilation=Native&Distribution=Ubuntu&target_version=22.04&target_type=deb_network
+## Parameters (config/params.yaml)
 
-4. Build the package:
-```bash
-colcon build --packages-select yolo_multi_cam
-```
-
-5. Source the workspace:
-```bash
-source ~/ros2_ws/install/setup.bash
-```
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model_path` | `yolo11n.pt` | Relative paths resolve against the installed package share dir first |
+| `camera_names` | 6 cameras | Keys for the `cameras.<name>.*` blocks |
+| `cameras.<name>.topic[_v1/_v2]` | — | Input topic(s) per camera |
+| `topic_profile` | `auto` | `v1`, `v2` or `auto` |
+| `target_rate` | 10.0 | Max inference rate per camera (Hz); surplus frames are skipped |
+| `confidence_threshold` | 0.45 | Minimum detection confidence |
+| `iou_threshold` | 0.5 | NMS IoU threshold |
+| `filter_classes` | `[0]` | COCO class IDs to keep (0 = person); empty = all |
+| `processed_imgsz` | 640 | YOLO input size (model resizes internally) |
+| `device` | `cuda:0` | Inference device |
+| `publish_annotated_image` | false | Debug overlay images |
+| `jpeg_quality` | 80 | JPEG quality of annotated output |
 
 ## Usage
 
-### Basic Launch
 ```bash
-ros2 run yolo_multi_cam multi_cam_yolo
+ros2 launch yolo_multi_cam yolo_multi_cam.launch.py
 ```
 
-### Parameters
+Requires `ultralytics` (and a CUDA-enabled torch). On Jetson use the
+NVIDIA torch wheels:
+<https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048>
 
-The node can be configured with the following parameters:
+## Changelog
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| model_path | string | "yolov8n.pt" | Path to the YOLO model file |
-| camera_topics | string[] | ["/camera_image/Cam_BR", ...] | List of camera topics to subscribe to |
-| confidence_threshold | double | 0.5 | Minimum confidence threshold for detections |
-| device | string | "cuda" | Device to run inference on ("cuda" or "cpu") |
-| publish_annotated_image | bool | true | Whether to publish annotated images |
-| publish_bboxes | bool | true | Whether to publish bounding box messages |
-| processed_imgsz | int | 1280 | Input image size for YOLO processing |
+### 0.2.0 (2026-07)
+- Output topics renamed to stable `/yolo/<camera_name>/detections`
+  (were `<input_topic>_bboxes`).
+- **Empty detection arrays are now published** for every processed
+  frame — required by detection_fusion for stale-detection expiry
+  (previously a camera that stopped seeing a person kept its last
+  detection "live" forever downstream).
+- v1/v2 topic profiles with auto-detection (ZED wrapper rename).
+- Per-camera rate limiting (`target_rate`, default 10 Hz).
+- ZED topics updated to wrapper 5.x names (v2 profile).
+- `yolo11n.pt` installed with the package; relative `model_path`
+  resolves against the share directory (no longer cwd-dependent).
+- Removed the no-op `_processing` reentrancy flag and the
+  `publish_bboxes` toggle (detections are the point of the node).
 
-### Topics
-
-For each camera topic `/camera_image/Cam_X`, the node publishes:
-- `/camera_image/Cam_X_annotated` (sensor_msgs/Image): Annotated images with detection visualization
-- `/camera_image/Cam_X_bboxes` (vision_msgs/Detection2DArray): Detected object bounding boxes
-
-## Configuration
-
-### Custom Camera Topics
-
-You can specify custom camera topics using ROS2 parameters:
-
-```bash
-ros2 run yolo_multi_cam multi_cam_yolo --ros-args -p camera_topics:="['/cam1/image_raw','/cam2/image_raw']"
-```
-
-### Custom YOLO Model
-
-To use a custom YOLO model:
-
-```bash
-ros2 run yolo_multi_cam multi_cam_yolo --ros-args -p model_path:="/path/to/your/model.pt"
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+### 0.1.0
+- Initial version: per-topic subscription, `<topic>_bboxes` outputs,
+  publishes only non-empty detections.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Citation
-
-If you use this software in your research, please cite:
 
 ```bibtex
 @software{multi_cam_yolo,
