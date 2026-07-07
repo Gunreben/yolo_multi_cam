@@ -1,0 +1,62 @@
+multi_cam_yolo_node:
+  ros__parameters:
+    # TensorRT FP16 engine, built on-device (D3):
+    #   cd /mnt/ros2_ws/models && python3 -c \
+    #     "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='engine', half=True, imgsz=640, device=0)"
+    # Engines are device-specific — rebuild after JetPack/TensorRT updates.
+    # Fallback: "yolo11n.pt" (relative paths resolve against the package
+    # share directory first, then the working directory).
+    model_path: "/mnt/ros2_ws/models/yolo11n.engine"
+
+    # v1  = topics as recorded by the v1 stack (old ZED wrapper names)
+    # v2  = live v2 stack / v2 bags
+    # auto = subscribe to both variants, lock onto whichever delivers first
+    topic_profile: "auto"
+
+    # Max inference rate per camera (Hz). Frames arriving faster are
+    # skipped. NOTE: rates quantize to integer frame strides of the
+    # source (ArkCams 25 fps, ZED 15 fps). Measured on the AGX Orin,
+    # all cameras live (D3, 2026-07-07):
+    #   10.0 -> every 3rd frame: 8.3 Hz/arkcam, ~70 ms latency,
+    #           ~45% predict-duty (recommended: headroom for recording)
+    #   12.0 -> every 2nd frame: ~9.2 Hz/arkcam achieved, ~105 ms
+    #           latency (predict lock saturates at ~44 fps total)
+    target_rate: 10.0
+
+    camera_names:
+      - "zed_front"
+      - "side_left"
+      - "rear_left"
+      - "rear_mid"      # dead as of 2026-07, tolerated (topic simply silent)
+      - "rear_right"
+      - "side_right"
+
+    cameras:
+      zed_front:
+        topic_v1: "/zed/zed_node/left_raw/image_raw_color/compressed"
+        topic_v2: "/zed/zed_node/left/color/raw/image/compressed"
+      side_left:
+        topic: "/camera/side_left/image_raw/compressed"
+      rear_left:
+        topic: "/camera/rear_left/image_raw/compressed"
+      rear_mid:
+        topic: "/camera/rear_mid/image_raw/compressed"
+      rear_right:
+        topic: "/camera/rear_right/image_raw/compressed"
+      side_right:
+        topic: "/camera/side_right/image_raw/compressed"
+
+    confidence_threshold: 0.45
+    iou_threshold: 0.5
+    device: "cuda:0"
+
+    # COCO class IDs to keep. 0 = person. Empty list = all classes.
+    filter_classes: [0]
+
+    # YOLO inference resolution. 640 is the sweet spot for speed/accuracy.
+    # The model resizes internally -- this does NOT need to match camera resolution.
+    processed_imgsz: 640
+    publish_annotated_image: false
+
+    # JPEG quality for compressed annotated output (1-100). Lower = smaller/faster.
+    jpeg_quality: 80

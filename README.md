@@ -66,7 +66,25 @@ Requires `ultralytics` (and a CUDA-enabled torch). On Jetson use the
 NVIDIA torch wheels:
 <https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048>
 
+## Performance (AGX Orin, D3 bench 2026-07-07)
+
+TensorRT FP16 engine (`/mnt/ros2_ws/models/yolo11n.engine`, built
+on-device — see comment in `config/params.yaml`; engines are
+device/TensorRT-version specific): 17.2 ms/frame end-to-end in-node
+(GPU ~5 ms; Python pre/post dominates) vs 22.5 ms for the `.pt`.
+With 4 live ArkCams + ZED and the multithreaded executor:
+8.3 Hz/ArkCam + 7.5 Hz ZED (= every 3rd/2nd frame), ~70 ms
+stamp→detection latency, ~1.8 cores, GPU ~50% (shared with ZED NEURAL
+depth). `target_rate` quantizes to frame strides of the 25/15 fps
+sources — see `config/params.yaml` for the measured 10-vs-12 trade-off.
+
 ## Changelog
+
+### 0.2.1 (2026-07, D3)
+- Multithreaded executor + reentrant callbacks: JPEG decode of
+  different cameras overlaps inference (model behind a lock, per-camera
+  busy flag prevents same-camera pile-up).
+- Default `model_path` switched to the on-device TensorRT FP16 engine.
 
 ### 0.2.0 (2026-07)
 - Output topics renamed to stable `/yolo/<camera_name>/detections`

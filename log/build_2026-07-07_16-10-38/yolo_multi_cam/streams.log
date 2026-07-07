@@ -1,0 +1,38 @@
+[1.145s] Invoking command in '/mnt/ros2_ws/src/yolo_multi_cam': PYTHONPATH=/mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/yolo_multi_cam build --build-base /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build install --record /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/install.log --single-version-externally-managed install_data
+[1.523s] running egg_info
+[1.547s] creating build/yolo_multi_cam/yolo_multi_cam.egg-info
+[1.547s] writing build/yolo_multi_cam/yolo_multi_cam.egg-info/PKG-INFO
+[1.548s] writing dependency_links to build/yolo_multi_cam/yolo_multi_cam.egg-info/dependency_links.txt
+[1.549s] writing entry points to build/yolo_multi_cam/yolo_multi_cam.egg-info/entry_points.txt
+[1.549s] writing requirements to build/yolo_multi_cam/yolo_multi_cam.egg-info/requires.txt
+[1.549s] writing top-level names to build/yolo_multi_cam/yolo_multi_cam.egg-info/top_level.txt
+[1.549s] writing manifest file 'build/yolo_multi_cam/yolo_multi_cam.egg-info/SOURCES.txt'
+[1.599s] reading manifest file 'build/yolo_multi_cam/yolo_multi_cam.egg-info/SOURCES.txt'
+[1.601s] writing manifest file 'build/yolo_multi_cam/yolo_multi_cam.egg-info/SOURCES.txt'
+[1.602s] running build
+[1.602s] running build_py
+[1.602s] creating /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build/lib/yolo_multi_cam
+[1.603s] copying yolo_multi_cam/multi_cam_yolo.py -> /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build/lib/yolo_multi_cam
+[1.603s] copying yolo_multi_cam/__init__.py -> /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build/lib/yolo_multi_cam
+[1.603s] running install
+[1.608s] running install_lib
+[1.633s] creating /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam
+[1.633s] copying /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build/lib/yolo_multi_cam/multi_cam_yolo.py -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam
+[1.634s] copying /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build/lib/yolo_multi_cam/__init__.py -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam
+[1.634s] byte-compiling /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam/multi_cam_yolo.py to multi_cam_yolo.cpython-310.pyc
+[1.637s] byte-compiling /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam/__init__.py to __init__.cpython-310.pyc
+[1.638s] running install_data
+[1.638s] creating /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/ament_index/resource_index/packages
+[1.638s] copying resource/yolo_multi_cam -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/ament_index/resource_index/packages
+[1.639s] copying package.xml -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam
+[1.639s] copying yolo11n.pt -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam
+[1.646s] creating /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam/launch
+[1.647s] copying launch/yolo_multi_cam.launch.py -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam/launch
+[1.647s] creating /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam/config
+[1.647s] copying config/params.yaml -> /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/share/yolo_multi_cam/config
+[1.647s] running install_egg_info
+[1.674s] Copying build/yolo_multi_cam/yolo_multi_cam.egg-info to /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages/yolo_multi_cam-0.2.1-py3.10.egg-info
+[1.675s] running install_scripts
+[1.727s] Installing multi_cam_yolo script to /mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/yolo_multi_cam
+[1.728s] writing list of installed files to '/mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/install.log'
+[1.772s] Invoked command in '/mnt/ros2_ws/src/yolo_multi_cam' returned '0': PYTHONPATH=/mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/mnt/ros2_ws/src/yolo_multi_cam/install/yolo_multi_cam/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/yolo_multi_cam build --build-base /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/build install --record /mnt/ros2_ws/src/yolo_multi_cam/build/yolo_multi_cam/install.log --single-version-externally-managed install_data

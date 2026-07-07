@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: yolo_multi_cam
+Version: 0.2.1
+Summary: YOLO Multi-Cam for people detection around agricultural machinery
+Maintainer: Lorenz Gunreben
+Maintainer-email: gunreben@wifa.uni-leipzig.de
+License: Apache-2.0
+Requires-Dist: setuptools
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: requires-dist
+Dynamic: summary

@@ -1,0 +1,2 @@
+[console_scripts]
+multi_cam_yolo = yolo_multi_cam.multi_cam_yolo:main

@@ -20,12 +20,15 @@ bags and the live v2 stack.
 
 import functools
 import os
+import threading
 import time
 
 import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage, Image
@@ -80,6 +83,9 @@ class CameraState:
         self.annotated_pub = None
         self.annotated_compressed = True
         self.last_processed = 0.0
+        # Per-camera busy flag: with the multithreaded executor a slow
+        # frame must not stack up successors of the same camera.
+        self.busy = threading.Lock()
 
 
 class MultiCamYoloNode(Node):
@@ -137,6 +143,12 @@ class MultiCamYoloNode(Node):
                 "ultralytics not installed. Run: pip install ultralytics"
             )
 
+        # Decode/preprocess of different cameras run concurrently
+        # (cv2/numpy/torch release the GIL); the model itself is guarded
+        # by _predict_lock, so inference throughput bounds the total.
+        self._predict_lock = threading.Lock()
+        self._cb_group = ReentrantCallbackGroup()
+
         self.cameras: dict[str, CameraState] = {}
         qos_sub = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, depth=1)
 
@@ -168,6 +180,7 @@ class MultiCamYoloNode(Node):
                     topic,
                     functools.partial(self._image_cb, camera_name=name, topic=topic),
                     qos_sub,
+                    callback_group=self._cb_group,
                 )
             self.cameras[name] = cam
             self.get_logger().info(
@@ -227,6 +240,8 @@ class MultiCamYoloNode(Node):
         now = time.monotonic()
         if self.min_interval > 0.0 and now - cam.last_processed < self.min_interval:
             return
+        if not cam.busy.acquire(blocking=False):
+            return  # previous frame of this camera still in flight
         cam.last_processed = now
 
         try:
@@ -235,6 +250,8 @@ class MultiCamYoloNode(Node):
             self.get_logger().warn(
                 f"Inference failed on {topic}: {e}", throttle_duration_sec=2.0
             )
+        finally:
+            cam.busy.release()
 
     def _run_inference(self, msg, cam: CameraState):
         if isinstance(msg, CompressedImage):
@@ -250,15 +267,16 @@ class MultiCamYoloNode(Node):
         if frame is None:
             return
 
-        results = self.model.predict(
-            frame,
-            conf=self.confidence_threshold,
-            iou=self.iou_threshold,
-            device=self.device,
-            imgsz=self.processed_imgsz,
-            classes=self.filter_classes if self.filter_classes else None,
-            verbose=False,
-        )
+        with self._predict_lock:
+            results = self.model.predict(
+                frame,
+                conf=self.confidence_threshold,
+                iou=self.iou_threshold,
+                device=self.device,
+                imgsz=self.processed_imgsz,
+                classes=self.filter_classes if self.filter_classes else None,
+                verbose=False,
+            )
 
         det_array = Detection2DArray()
         det_array.header = msg.header
@@ -316,8 +334,10 @@ class MultiCamYoloNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = MultiCamYoloNode()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     node.destroy_node()
