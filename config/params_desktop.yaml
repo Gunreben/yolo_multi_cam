@@ -1,0 +1,29 @@
+# Desktop / bag-replay overrides (load after params.yaml):
+#   ros2 launch yolo_multi_cam yolo_multi_cam.launch.py \
+#       params_file:=$(ros2 pkg prefix --share yolo_multi_cam)/config/params_desktop.yaml
+#
+# ONNX export (once, needs ultralytics only for this step):
+#   yolo export model=yolo11n.pt format=onnx dynamic=True simplify=True
+# Runs on onnxruntime-gpu (TensorRT FP16 EP; first start builds the engine,
+# ~1 min, cached in trt_cache_dir).
+multi_cam_yolo_node:
+  ros__parameters:
+    model_path: "~/ros2_ws/models/onnx/yolo11n.onnx"
+    providers: ["tensorrt", "cuda", "cpu"]
+    # 0 = every frame: ~25 Hz/ArkCam + ZED at ~1-1.5 cores (batched worker)
+    target_rate: 0.0
+
+    # msa_new bags (e.g. take_2) stamp ArkCam images with the body frame
+    # camera_<name>; since vario700_sensorrig 0.3.0 the calibrated pose is
+    # camera_<name>_optical_frame. The ZED is already stamped optical.
+    cameras:
+      side_left:
+        frame_id: "camera_side_left_optical_frame"
+      rear_left:
+        frame_id: "camera_rear_left_optical_frame"
+      rear_mid:
+        frame_id: "camera_rear_mid_optical_frame"
+      rear_right:
+        frame_id: "camera_rear_right_optical_frame"
+      side_right:
+        frame_id: "camera_side_right_optical_frame"

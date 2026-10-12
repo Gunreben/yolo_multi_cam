@@ -55,6 +55,18 @@ ArkCam topics are identical in both stacks and use plain `topic`.
 | `device` | `cuda:0` | Inference device |
 | `publish_annotated_image` | false | Debug overlay images |
 | `jpeg_quality` | 80 | JPEG quality of annotated output |
+| `cameras.<name>.frame_id` | "" | Frame for the published detections instead of the image header's |
+| `providers` | `[tensorrt, cuda, cpu]` | onnxruntime execution providers (`.onnx` models only) |
+| `trt_cache_dir` | `~/.cache/yolo_multi_cam_trt` | TensorRT engine cache (`.onnx` models only) |
+
+### Backends
+
+- `.pt` / `.engine` → ultralytics (Jetson setup).
+- `.onnx` → onnxruntime-gpu (TensorRT FP16 EP), no ultralytics/torch at
+  runtime — the desktop path (`yolo_multi_cam/onnx_yolo.py`). Export once:
+  `yolo export model=yolo11n.pt format=onnx dynamic=True simplify=True`.
+  The batch is padded to the number of cameras so TensorRT builds one
+  engine (first start ~1 min, then cached).
 
 ## Usage
 
@@ -62,7 +74,14 @@ ArkCam topics are identical in both stacks and use plain `topic`.
 ros2 launch yolo_multi_cam yolo_multi_cam.launch.py
 ```
 
-Requires `ultralytics` (and a CUDA-enabled torch). On Jetson use the
+Desktop / bag replay (ONNX backend, msa_new optical frames):
+
+```bash
+ros2 launch yolo_multi_cam yolo_multi_cam.launch.py \
+    params_file:=$(ros2 pkg prefix --share yolo_multi_cam)/config/params_desktop.yaml
+```
+
+The ultralytics backend requires `ultralytics` (and a CUDA-enabled torch). On Jetson use the
 NVIDIA torch wheels:
 <https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048>
 
@@ -78,7 +97,25 @@ stamp→detection latency, ~1.8 cores, GPU ~50% (shared with ZED NEURAL
 depth). `target_rate` quantizes to frame strides of the 25/15 fps
 sources — see `config/params.yaml` for the measured 10-vs-12 trade-off.
 
+## Performance (desktop, RTX PRO 6000, take_2 replay)
+
+ONNX/TensorRT FP16, every frame (`target_rate: 0`): ~25 Hz per ArkCam +
+ZED at its source rate, ~1–1.5 CPU cores. Batched b=6 inference ~3 ms.
+
 ## Changelog
+
+### 0.3.0 (2026-10)
+- ONNX backend (onnxruntime-gpu, TensorRT FP16 EP), selected by a `.onnx`
+  `model_path`; `config/params_desktop.yaml` for desktop/bag replay.
+- Worker-thread design: callbacks only keep the latest message per
+  camera; one worker decodes all due cameras in parallel and runs them as
+  one batch. Replaces the multithreaded executor, whose dispatch overhead
+  capped the desktop at ~5.7 Hz/camera (now ~25 Hz).
+- `cameras.<name>.frame_id` override (msa_new bags stamp ArkCam images
+  with the body frame `camera_<name>`; the calibrated pose is
+  `camera_<name>_optical_frame` since vario700_sensorrig 0.3.0).
+- `model_path` expands `~`; launch file takes `params_file` and
+  `use_sim_time`.
 
 ### 0.2.1 (2026-07, D3)
 - Multithreaded executor + reentrant callbacks: JPEG decode of
