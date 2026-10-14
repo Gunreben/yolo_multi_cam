@@ -22,6 +22,7 @@ Backends: ``model_path`` ending in ``.onnx`` runs through onnxruntime
 anything else (``.pt``, ``.engine``) goes through ultralytics.
 """
 
+import array
 import functools
 import os
 import threading
@@ -59,7 +60,7 @@ def _cv2_to_imgmsg(frame: np.ndarray, header) -> Image:
         msg.encoding = "mono8"
         msg.step = msg.width
     msg.is_bigendian = False
-    msg.data = frame.tobytes()
+    msg.data = array.array("B", frame.tobytes())  # Humble fast path
     return msg
 
 
@@ -70,7 +71,7 @@ def _cv2_to_compressed_imgmsg(
     msg.header = header
     msg.format = "jpeg"
     _, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
-    msg.data = buf.tobytes()
+    msg.data = array.array("B", buf.tobytes())
     return msg
 
 
