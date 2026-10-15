@@ -107,9 +107,16 @@ class _OnnxBackend:
         self.batch = batch
         self.model.predict([np.zeros((imgsz, imgsz, 3), np.uint8)], pad_to=batch)
 
+    def prepare(self, frame):
+        return self.model.prepare(frame)
+
     def predict(self, frames, conf, iou, classes):
         return self.model.predict(frames, conf=conf, iou=iou, classes=classes,
                                   pad_to=self.batch)
+
+    def predict_prepared(self, items, conf, iou, classes):
+        return self.model.predict_prepared(items, conf=conf, iou=iou, classes=classes,
+                                           pad_to=self.batch)
 
 
 class CameraState:
@@ -327,14 +334,27 @@ class MultiCamYoloNode(Node):
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         return frame
 
+    def _decode_prepare(self, msg):
+        frame = self._decode(msg)
+        if frame is None or not hasattr(self.model, "prepare"):
+            return frame, None
+        return frame, self.model.prepare(frame)
+
     def _run_inference(self, due):
-        frames = list(self._decoder.map(self._decode, [msg for _, msg in due]))
-        ok = [(cam, msg, f) for (cam, msg), f in zip(due, frames) if f is not None]
+        # decode + letterbox in the pool (cv2 releases the GIL)
+        frames = list(self._decoder.map(self._decode_prepare, [msg for _, msg in due]))
+        ok = [(cam, msg, f, p) for (cam, msg), (f, p) in zip(due, frames) if f is not None]
         if not ok:
             return
-        results = self.model.predict(
-            [f for _, _, f in ok], self.confidence_threshold, self.iou_threshold,
-            self.filter_classes if self.filter_classes else None)
+        classes = self.filter_classes if self.filter_classes else None
+        if ok[0][3] is not None:
+            results = self.model.predict_prepared(
+                [p for *_, p in ok], self.confidence_threshold, self.iou_threshold, classes)
+        else:
+            results = self.model.predict(
+                [f for _, _, f, _ in ok], self.confidence_threshold, self.iou_threshold,
+                classes)
+        ok = [(cam, msg, f) for cam, msg, f, _ in ok]
         for (cam, msg, frame), boxes in zip(ok, results):
             self._publish(cam, msg, frame, boxes)
 

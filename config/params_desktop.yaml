@@ -4,11 +4,13 @@
 #
 # ONNX export (once, needs ultralytics only for this step):
 #   yolo export model=yolo11n.pt format=onnx dynamic=True simplify=True
+# then move pre/post-processing onto the GPU (person only, see the tool):
+#   python3 tools/fuse_onnx.py yolo11n.onnx -o yolo11n_person_fused.onnx --classes 0
 # Runs on onnxruntime-gpu (TensorRT FP16 EP; first start builds the engine,
 # ~1 min, cached in trt_cache_dir).
 multi_cam_yolo_node:
   ros__parameters:
-    model_path: "~/ros2_ws/models/onnx/yolo11n.onnx"
+    model_path: "~/ros2_ws/models/onnx/yolo11n_person_fused.onnx"
     providers: ["tensorrt", "cuda", "cpu"]
     # 0 = every frame: ~25 Hz/ArkCam + ZED at ~1-1.5 cores (batched worker)
     target_rate: 0.0
